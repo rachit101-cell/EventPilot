@@ -4,79 +4,106 @@ import {
   Sparkles,
   ArrowRight,
   ShieldCheck,
-  Zap,
   CheckCircle2,
   Calendar,
   Wallet,
   Users,
-  Lightbulb,
+  Compass,
+  Star,
+  Clock,
+  Award,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 
 export default function LandingPage() {
   return (
-    <div className="flex-1 flex flex-col">
-      {/* Top Navbar */}
-      <nav className="h-16 border-b border-slate-800/80 bg-slate-900/40 backdrop-blur-md px-6 flex items-center justify-between sticky top-0 z-30">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-purple-900/40">
-            <Sparkles className="w-4 h-4" />
-          </div>
-          <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-white via-slate-200 to-purple-200 bg-clip-text text-transparent">
-            EventPilot AI
-          </span>
-        </div>
+    <div className="flex-1 flex flex-col min-h-screen">
+      {/* Top Haute Navbar */}
+      <nav className="h-20 border-b border-white/[0.08] bg-[#070A12]/90 backdrop-blur-xl px-6 sm:px-12 flex items-center justify-between sticky top-0 z-30">
         <div className="flex items-center gap-3">
-          <Link href="/events">
-            <Button size="sm" variant="outline">
-              Sign In
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#DFC094] via-[#C5A880] to-[#8C6D3B] flex items-center justify-center text-[#0A0B0E] font-serif font-black text-base shadow-lg shadow-[#C5A880]/20">
+            EP
+          </div>
+          <div className="flex flex-col">
+            <span className="font-semibold text-base tracking-tight text-white flex items-center gap-2">
+              EventPilot <span className="text-[10px] tracking-[0.25em] uppercase font-light text-[#C5A880] px-2 py-0.5 rounded border border-[#C5A880]/30 bg-[#C5A880]/10">Atelier</span>
+            </span>
+            <span className="text-[10px] text-slate-400 tracking-wider uppercase">Bespoke Event Direction</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 sm:gap-4">
+          <Link href="/events" prefetch={true}>
+            <Button size="sm" variant="ghost" className="text-slate-300 hover:text-white">
+              Client Portal
             </Button>
           </Link>
-          <Link href="/events/new">
-            <Button size="sm" variant="primary" className="gap-2 shadow-purple-900/40">
-              <span>Launch Planner</span>
+          <Link href="/events/new" prefetch={true}>
+            <Button size="sm" variant="primary" className="gap-2">
+              <span>Commission an Event</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </Button>
           </Link>
         </div>
       </nav>
 
-      {/* Hero Section */}
-      <section className="relative px-6 py-20 lg:py-28 max-w-5xl mx-auto text-center space-y-6">
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-purple-950/60 border border-purple-800/60 text-purple-300 text-xs font-medium mb-2 shadow-inner">
-          <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-          <span>Judging Baseline: Hackathon Demonstration Ready</span>
+      {/* Hero Section - Editorial Haute Luxury */}
+      <section className="relative px-6 pt-20 pb-16 lg:pt-28 lg:pb-24 max-w-5xl mx-auto text-center space-y-8">
+        <div className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-[#181510] border border-[#C5A880]/35 text-[#E6C79C] text-xs font-medium tracking-wide shadow-sm">
+          <Star className="w-3.5 h-3.5 text-[#C5A880] fill-[#C5A880]" />
+          <span>Private Concierge for High-Stakes Celebrations</span>
         </div>
 
-        <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight text-slate-100 leading-[1.15]">
-          Organize Weddings, Birthdays & Events with{" "}
-          <span className="bg-gradient-to-r from-purple-400 via-indigo-300 to-pink-400 bg-clip-text text-transparent">
-            Verifiable AI Intelligence
+        <h1 className="text-4xl sm:text-6xl lg:text-7xl font-bold tracking-tight text-white leading-[1.12]">
+          Curate Extraordinary Events with{" "}
+          <span className="gold-gradient-text block sm:inline">
+            Uncompromising Precision.
           </span>
         </h1>
 
-        <p className="text-base sm:text-lg text-slate-300 max-w-2xl mx-auto leading-relaxed">
-          Describe your event naturally. Receive an actionable plan with intelligent budget allocations,
-          a date-aware timeline DAG, vendor requirements, and real-time conversational refinement.
+        <p className="text-base sm:text-xl text-slate-300 max-w-2xl mx-auto leading-relaxed font-light">
+          From multi-day luxury weddings to milestone galas. Articulate your grand vision in plain words, and our studio director synthesizes a balanced financial ledger, master itinerary, and vendor roadmap in seconds.
         </p>
 
-        {/* Demo Prompt Pill */}
-        <div className="pt-2 pb-6 max-w-2xl mx-auto">
-          <div className="glass-card rounded-2xl p-4 border border-purple-800/40 shadow-xl text-left space-y-3">
-            <div className="flex items-center justify-between text-xs text-purple-300 font-medium">
-              <span className="flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5" /> Sample Hackathon Brief
+        {/* Action Button & Sample Brief Card */}
+        <div className="pt-4 max-w-2xl mx-auto space-y-6">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+            <Link href="/events/new" className="w-full sm:w-auto">
+              <Button size="lg" variant="primary" className="w-full sm:w-auto px-8 gap-3 shadow-xl">
+                <span>Start Event Commission</span>
+                <ArrowRight className="w-4 h-4" />
+              </Button>
+            </Link>
+            <Link href="/events" className="w-full sm:w-auto">
+              <Button size="lg" variant="secondary" className="w-full sm:w-auto px-6">
+                <span>Browse Portfolio</span>
+              </Button>
+            </Link>
+          </div>
+
+          {/* Sample Brief Card with Luxury Presentation */}
+          <div className="glass-card rounded-2xl p-5 border border-[#C5A880]/25 shadow-2xl text-left space-y-3.5 mt-8">
+            <div className="flex items-center justify-between text-xs text-[#E6C79C]">
+              <span className="flex items-center gap-2 tracking-wider uppercase text-[10px] font-semibold">
+                <Compass className="w-3.5 h-3.5 text-[#C5A880]" />
+                Featured Commission Brief
               </span>
-              <span className="text-slate-400">Click to run in 1-click</span>
+              <span className="text-[11px] text-slate-400">One-click demonstration</span>
             </div>
-            <p className="text-xs sm:text-sm text-slate-200 font-mono bg-slate-900/80 p-3 rounded-xl border border-slate-800 leading-relaxed">
-              &ldquo;I want to organize a wedding for 250 guests in Bangalore with a budget of ₹15 lakhs in December.&rdquo;
-            </p>
-            <div className="flex justify-end">
+
+            <div className="bg-[#0D0F14]/90 p-4 rounded-xl border border-white/[0.08] relative group">
+              <p className="text-xs sm:text-sm text-slate-200 font-mono leading-relaxed">
+                &ldquo;I want to organize a wedding for 250 guests in Bangalore with a budget of ₹15 lakhs in December.&rdquo;
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-[11px] text-slate-400">
+                Instantly generates zero-drift budget, task sequence, and verified vendor roles.
+              </span>
               <Link href="/events/new">
-                <Button size="sm" variant="primary" className="gap-2">
-                  <span>Create with this brief</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
+                <Button size="sm" variant="gold" className="gap-1.5 shrink-0 text-xs">
+                  <span>Load Brief</span>
+                  <ArrowRight className="w-3 h-3" />
                 </Button>
               </Link>
             </div>
@@ -84,45 +111,71 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Feature Pillars Grid */}
-      <section className="px-6 py-12 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="glass-card glass-card-hover rounded-2xl p-6 space-y-3">
-          <div className="w-10 h-10 rounded-xl bg-purple-900/40 text-purple-400 flex items-center justify-center border border-purple-800/50">
+      {/* Haute Architecture Pillars */}
+      <section className="px-6 py-16 max-w-6xl mx-auto w-full grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="glass-card glass-card-hover rounded-2xl p-7 space-y-4">
+          <div className="w-11 h-11 rounded-xl bg-[#1C1811] text-[#C5A880] flex items-center justify-center border border-[#C5A880]/30">
             <Wallet className="w-5 h-5" />
           </div>
-          <h3 className="text-base font-semibold text-slate-100">Zero-Drift Budget Engine</h3>
-          <p className="text-xs text-slate-300 leading-relaxed">
-            Integer-based financial arithmetic using the Largest Remainder Method ensures total allocations and
-            contingency match your budget down to the exact rupee without floating-point errors.
-          </p>
+          <div className="space-y-1.5">
+            <h3 className="text-base font-semibold text-white tracking-tight">Zero-Drift Financial Ledger</h3>
+            <p className="text-xs text-slate-300 leading-relaxed font-light">
+              Integer-based arithmetic allocates contingency and sub-budgets to the exact rupee. Live expense tracking verifies invoices against confirmed allocations.
+            </p>
+          </div>
         </div>
 
-        <div className="glass-card glass-card-hover rounded-2xl p-6 space-y-3">
-          <div className="w-10 h-10 rounded-xl bg-indigo-900/40 text-indigo-400 flex items-center justify-center border border-indigo-800/50">
+        <div className="glass-card glass-card-hover rounded-2xl p-7 space-y-4">
+          <div className="w-11 h-11 rounded-xl bg-[#181A22] text-[#8EB8E5] flex items-center justify-center border border-[#8EB8E5]/30">
             <Calendar className="w-5 h-5" />
           </div>
-          <h3 className="text-base font-semibold text-slate-100">Date-Aware Timeline DAG</h3>
-          <p className="text-xs text-slate-300 leading-relaxed">
-            Milestones and tasks resolve relative offsets from the event date. Shifting an event date automatically
-            recalculates unlocked deadlines while guarding against impossible dependencies.
-          </p>
+          <div className="space-y-1.5">
+            <h3 className="text-base font-semibold text-white tracking-tight">Master Date-Aware Timeline</h3>
+            <p className="text-xs text-slate-300 leading-relaxed font-light">
+              Tasks and milestones link dynamically to the event date. Shift celebration dates with a single prompt and watch every unlocked deadline orchestrate automatically.
+            </p>
+          </div>
         </div>
 
-        <div className="glass-card glass-card-hover rounded-2xl p-6 space-y-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-900/40 text-emerald-400 flex items-center justify-center border border-emerald-800/50">
+        <div className="glass-card glass-card-hover rounded-2xl p-7 space-y-4">
+          <div className="w-11 h-11 rounded-xl bg-[#111A16] text-[#7CE4B5] flex items-center justify-center border border-[#10B981]/30">
             <ShieldCheck className="w-5 h-5" />
           </div>
-          <h3 className="text-base font-semibold text-slate-100">Safe AI Modifications</h3>
-          <p className="text-xs text-slate-300 leading-relaxed">
-            The AI proposes typed actions instead of arbitrarily rewriting database rows. Inspect before/after diffs,
-            verify capacity implications, and confirm with confidence.
-          </p>
+          <div className="space-y-1.5">
+            <h3 className="text-base font-semibold text-white tracking-tight">Executive Change Approvals</h3>
+            <p className="text-xs text-slate-300 leading-relaxed font-light">
+              Ask to increase guest counts or reduce floral decor. Review structured before/after diffs and approve with one click—no silent or destructive alterations.
+            </p>
+          </div>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="mt-auto border-t border-slate-800 py-8 px-6 text-center text-xs text-slate-500">
-        <p>© 2026 EventPilot AI. Built for hackathon demonstration with Next.js 15, TypeScript & SQLite.</p>
+      {/* Haute Experience Statement */}
+      <section className="px-6 py-14 max-w-4xl mx-auto w-full text-center space-y-4 border-t border-white/[0.06]">
+        <div className="w-10 h-10 rounded-full bg-[#1C1811] border border-[#C5A880]/30 text-[#C5A880] flex items-center justify-center mx-auto">
+          <Award className="w-5 h-5" />
+        </div>
+        <h2 className="text-xl sm:text-2xl font-semibold text-white tracking-tight">
+          Designed for Discerning Planners & Luxury Couples
+        </h2>
+        <p className="text-xs sm:text-sm text-slate-400 max-w-lg mx-auto leading-relaxed">
+          Weddings, gala anniversaries, and community symposiums curated with the precision of a Swiss timepiece and the warmth of a bespoke concierge.
+        </p>
+      </section>
+
+      {/* Editorial Footer */}
+      <footer className="mt-auto border-t border-white/[0.08] bg-[#07080A] py-10 px-6 sm:px-12 text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded bg-[#C5A880] text-[#0A0B0E] font-serif font-black text-xs flex items-center justify-center">
+            EP
+          </div>
+          <span className="text-slate-300 font-medium">EventPilot Atelier</span>
+          <span className="text-slate-600">·</span>
+          <span>Bespoke Event Intelligence</span>
+        </div>
+        <p className="text-slate-500">
+          Engineered with Next.js 15, TypeScript & Deterministic SQLite Architecture.
+        </p>
       </footer>
     </div>
   );

@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Sparkles, ArrowRight } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -28,7 +27,7 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error?.message || "Login failed");
+        throw new Error(data.error?.message || "Authentication failed");
       }
       router.push("/events");
     } catch (err: any) {
@@ -39,30 +38,30 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex-1 flex items-center justify-center p-6">
-      <Card className="w-full max-w-md space-y-6">
-        <div className="text-center space-y-2">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white mx-auto shadow-md shadow-purple-900/40">
-            <Sparkles className="w-5 h-5" />
+    <div className="flex-1 flex items-center justify-center p-6 min-h-screen">
+      <Card className="w-full max-w-md space-y-6 border border-white/[0.08]">
+        <div className="text-center space-y-2.5">
+          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#DFC094] via-[#C5A880] to-[#8C6D3B] flex items-center justify-center text-[#0A0B0E] font-serif font-black text-lg mx-auto shadow-md shadow-[#C5A880]/20">
+            EP
           </div>
-          <h2 className="text-xl font-bold text-slate-100">Welcome Back to EventPilot</h2>
-          <p className="text-xs text-slate-400">Sign in to manage and refine your event plans</p>
+          <h2 className="text-xl font-bold text-white tracking-tight">Access EventPilot Atelier</h2>
+          <p className="text-xs text-slate-400">Sign in to coordinate and calibrate your commissions</p>
         </div>
 
         {error && (
-          <div className="p-3 rounded-lg bg-rose-950/40 border border-rose-800/60 text-xs text-rose-300">
+          <div className="p-3 rounded-xl bg-rose-950/60 border border-rose-800/80 text-xs text-rose-200">
             {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
-            label="Email Address"
+            label="Client Email"
             type="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
+            placeholder="client@atelier.com"
           />
           <Input
             label="Password"
@@ -74,14 +73,14 @@ export default function LoginPage() {
           />
 
           <Button type="submit" variant="primary" className="w-full" isLoading={isLoading}>
-            Sign In
+            Sign In to Atelier
           </Button>
         </form>
 
         <div className="text-center text-xs text-slate-400">
-          Don&apos;t have an account?{" "}
-          <Link href="/register" className="text-purple-400 hover:text-purple-300 font-medium">
-            Create an account
+          First-time commissioner?{" "}
+          <Link href="/register" className="text-[#C5A880] hover:text-[#E8D5B5] font-semibold">
+            Create an Account
           </Link>
         </div>
       </Card>

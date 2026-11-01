@@ -10,26 +10,31 @@ import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { ClientCache } from "@/lib/client-cache";
 import { BudgetCategory, Expense } from "@/types";
 import {
   Wallet,
   Plus,
   Trash2,
-  AlertTriangle,
   Sparkles,
-  TrendingUp,
   Receipt,
   Loader2,
+  ShieldAlert,
 } from "lucide-react";
 
 export default function BudgetPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const eventId = resolvedParams.id;
 
-  const [budgetData, setBudgetData] = useState<any>(null);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // Instant SWR cache read
+  const cachedBudget = ClientCache.get<any>(`budget_${eventId}`);
+  const cachedExpenses = ClientCache.get<Expense[]>(`expenses_${eventId}`);
+
+  const [budgetData, setBudgetData] = useState<any>(cachedBudget);
+  const [expenses, setExpenses] = useState<Expense[]>(cachedExpenses || []);
+  const [isLoading, setIsLoading] = useState(!cachedBudget);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Expense modal state
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -37,6 +42,9 @@ export default function BudgetPage({ params }: { params: Promise<{ id: string }>
   const [description, setDescription] = useState("");
   const [amountStr, setAmountStr] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Confirm delete state
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const fetchBudget = async () => {
     try {
@@ -47,8 +55,14 @@ export default function BudgetPage({ params }: { params: Promise<{ id: string }>
       const bJson = await bRes.json();
       const eJson = await eRes.json();
 
-      if (bJson.data) setBudgetData(bJson.data);
-      if (eJson.data) setExpenses(eJson.data);
+      if (bJson.data) {
+        setBudgetData(bJson.data);
+        ClientCache.set(`budget_${eventId}`, bJson.data);
+      }
+      if (eJson.data) {
+        setExpenses(eJson.data);
+        ClientCache.set(`expenses_${eventId}`, eJson.data);
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -66,8 +80,9 @@ export default function BudgetPage({ params }: { params: Promise<{ id: string }>
     if (isNaN(amountVal) || amountVal <= 0) return;
 
     setIsSubmitting(true);
+    setErrorMsg(null);
     try {
-      await fetch(`/api/events/${eventId}/expenses`, {
+      const res = await fetch(`/api/events/${eventId}/expenses`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -76,43 +91,43 @@ export default function BudgetPage({ params }: { params: Promise<{ id: string }>
           actual_minor: Math.round(amountVal * 100),
         }),
       });
-
+      if (!res.ok) {
+        const j = await res.json();
+        setErrorMsg(j.error?.message || "Failed to record disbursement.");
+        return;
+      }
       setIsExpenseModalOpen(false);
       setDescription("");
       setAmountStr("");
+      ClientCache.invalidate(`budget_${eventId}`);
+      ClientCache.invalidate(`dashboard_${eventId}`);
       fetchBudget();
     } catch (err) {
       console.error(err);
+      setErrorMsg("Network error. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleDeleteExpense = async (expenseId: string) => {
+    setConfirmDeleteId(null);
     try {
       await fetch(`/api/events/${eventId}/expenses?expenseId=${expenseId}`, {
         method: "DELETE",
       });
+      ClientCache.invalidate(`budget_${eventId}`);
+      ClientCache.invalidate(`dashboard_${eventId}`);
       fetchBudget();
     } catch (e) {
       console.error(e);
     }
   };
 
-  if (isLoading || !budgetData) {
-    return (
-      <div className="flex-1 flex flex-col">
-        <Navbar />
-        <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
-        </div>
-      </div>
-    );
-  }
-
-  const { budget, categories } = budgetData;
+  const budget = budgetData?.budget;
+  const categories = budgetData?.categories || [];
+  const currency = budget?.currency || "INR";
   const totalMinor = budget?.total_minor || 0;
-  const contingencyMinor = budget?.contingency_minor || 0;
 
   const totalAllocatedMinor = categories.reduce(
     (acc: number, c: BudgetCategory) => acc + (c.category !== "contingency" ? c.estimated_minor : 0),
@@ -123,7 +138,7 @@ export default function BudgetPage({ params }: { params: Promise<{ id: string }>
   const isOverBudget = remainingMinor < 0;
 
   return (
-    <div className="flex-1 flex flex-col min-h-screen">
+    <div className="flex-1 flex flex-col min-h-screen bg-[#05070E]">
       <Navbar onOpenAssistant={() => setIsAssistantOpen(true)} />
 
       <div className="flex-1 flex">
@@ -133,9 +148,14 @@ export default function BudgetPage({ params }: { params: Promise<{ id: string }>
           {/* Header */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-bold text-slate-100 tracking-tight">Budget & Expense Manager</h1>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] tracking-[0.2em] uppercase font-semibold text-[#C5A880]">
+                  Capital & Disbursements
+                </span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Financial Ledger</h1>
               <p className="text-xs text-slate-400 mt-1">
-                Zero-drift integer budget allocations, live quotation comparisons, and expense records
+                Precision allocations, quotation balances, and live disbursement tracking.
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -143,192 +163,227 @@ export default function BudgetPage({ params }: { params: Promise<{ id: string }>
                 variant="outline"
                 size="sm"
                 onClick={() => setIsAssistantOpen(true)}
-                className="gap-2 text-purple-300 border-purple-800"
+                className="gap-2"
               >
-                <Sparkles className="w-4 h-4 text-purple-400" />
-                <span>Reallocate with AI</span>
+                <Sparkles className="w-4 h-4 text-[#C5A880]" />
+                <span>Reallocate with Concierge</span>
               </Button>
               <Button
                 variant="primary"
                 size="sm"
                 onClick={() => setIsExpenseModalOpen(true)}
-                className="gap-2 shadow-purple-900/40"
+                className="gap-2 shadow-lg"
               >
                 <Plus className="w-4 h-4" />
-                <span>Record Expense</span>
+                <span>Record Disbursement</span>
               </Button>
             </div>
           </div>
 
-          {/* Budget Top Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-            <Card className="space-y-1">
-              <span className="text-xs text-slate-400 font-medium">Total Target Budget</span>
-              <div className="text-xl font-bold font-mono text-slate-100">
-                {formatCurrency(totalMinor, budget?.currency)}
+          {isLoading && !budgetData ? (
+            <div className="space-y-6 animate-pulse">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                <div className="h-20 bg-[#0D111A]/80 rounded-2xl border border-white/[0.08]" />
+                <div className="h-20 bg-[#0D111A]/80 rounded-2xl border border-white/[0.08]" />
+                <div className="h-20 bg-[#0D111A]/80 rounded-2xl border border-white/[0.08]" />
+                <div className="h-20 bg-[#0D111A]/80 rounded-2xl border border-white/[0.08]" />
               </div>
-            </Card>
-
-            <Card className="space-y-1">
-              <span className="text-xs text-slate-400 font-medium">Allocated Categories</span>
-              <div className="text-xl font-bold font-mono text-purple-300">
-                {formatCurrency(totalAllocatedMinor, budget?.currency)}
-              </div>
-            </Card>
-
-            <Card className="space-y-1">
-              <span className="text-xs text-slate-400 font-medium">Actual Spent</span>
-              <div className="text-xl font-bold font-mono text-slate-100">
-                {formatCurrency(totalActualSpent, budget?.currency)}
-              </div>
-            </Card>
-
-            <Card className="space-y-1">
-              <span className="text-xs text-slate-400 font-medium">Remaining Balance</span>
-              <div
-                className={`text-xl font-bold font-mono ${
-                  isOverBudget ? "text-rose-400 font-extrabold" : "text-emerald-300"
-                }`}
-              >
-                {formatCurrency(remainingMinor, budget?.currency)}
-              </div>
-            </Card>
-          </div>
-
-          {/* Categories Breakdown Table */}
-          <Card className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider">
-                Category Allocations (Benchmark Model)
-              </h2>
-              <Badge variant="purple">Deterministic Precision</Badge>
+              <div className="h-64 bg-[#0D111A]/80 rounded-2xl border border-white/[0.08]" />
             </div>
+          ) : (
+            <>
+              {/* Budget Top Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                <Card className="space-y-1 border border-white/[0.08]">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Total Target Capital</span>
+                  <div className="text-xl font-bold font-mono text-white">
+                    {formatCurrency(totalMinor, currency)}
+                  </div>
+                </Card>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider">
-                    <th className="pb-3 pl-2">Category</th>
-                    <th className="pb-3">Estimated Allocation</th>
-                    <th className="pb-3">Actual Spent</th>
-                    <th className="pb-3">Remaining</th>
-                    <th className="pb-3 pr-2">Provenance</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60">
-                  {categories.map((c: BudgetCategory) => {
-                    const diff = c.estimated_minor - c.actual_minor;
-                    const isCategoryOver = diff < 0;
+                <Card className="space-y-1 border border-white/[0.08]">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Allocated Sub-Budgets</span>
+                  <div className="text-xl font-bold font-mono text-[#E6C79C]">
+                    {formatCurrency(totalAllocatedMinor, currency)}
+                  </div>
+                </Card>
 
-                    return (
-                      <tr key={c.id} className="hover:bg-slate-900/40 transition-colors">
-                        <td className="py-3 pl-2 capitalize font-semibold text-slate-200">
-                          {c.category}
-                        </td>
-                        <td className="py-3 font-mono text-purple-300 font-medium">
-                          {formatCurrency(c.estimated_minor, budget?.currency)}
-                        </td>
-                        <td className="py-3 font-mono text-slate-300">
-                          {formatCurrency(c.actual_minor, budget?.currency)}
-                        </td>
-                        <td
-                          className={`py-3 font-mono font-medium ${
-                            isCategoryOver ? "text-rose-400" : "text-emerald-400"
-                          }`}
-                        >
-                          {formatCurrency(diff, budget?.currency)}
-                        </td>
-                        <td className="py-3 pr-2">
-                          <span className="text-[10px] text-slate-500 uppercase tracking-wider font-mono">
-                            {c.source}
-                          </span>
-                        </td>
+                <Card className="space-y-1 border border-white/[0.08]">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Disbursed Capital</span>
+                  <div className="text-xl font-bold font-mono text-white">
+                    {formatCurrency(totalActualSpent, currency)}
+                  </div>
+                </Card>
+
+                <Card className="space-y-1 border border-white/[0.08]">
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Remaining Capital</span>
+                  <div
+                    className={`text-xl font-bold font-mono ${
+                      isOverBudget ? "text-rose-400 font-extrabold" : "text-[#7CE4B5]"
+                    }`}
+                  >
+                    {formatCurrency(remainingMinor, currency)}
+                  </div>
+                </Card>
+              </div>
+
+              {/* Categories Breakdown Table */}
+              <Card className="space-y-4 border border-white/[0.08]">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-bold text-white uppercase tracking-wider">
+                      Category Allocations
+                    </h2>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Balanced benchmark allocation matched to target capital
+                    </p>
+                  </div>
+                  <Badge variant="gold">Verified Ledger</Badge>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-white/[0.08] text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
+                        <th className="pb-3 pl-2">Category</th>
+                        <th className="pb-3">Estimated Allocation</th>
+                        <th className="pb-3">Disbursed</th>
+                        <th className="pb-3 pr-2">Remaining</th>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </Card>
+                    </thead>
+                    <tbody className="divide-y divide-white/[0.04]">
+                      {categories.map((c: BudgetCategory) => {
+                        const diff = c.estimated_minor - c.actual_minor;
+                        const isCategoryOver = diff < 0;
 
-          {/* Expense Log */}
-          <Card className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider flex items-center gap-2">
-                <Receipt className="w-4 h-4 text-purple-400" />
-                <span>Recorded Expenses ({expenses.length})</span>
-              </h2>
-              <Button size="sm" variant="outline" onClick={() => setIsExpenseModalOpen(true)}>
-                Add Receipt
-              </Button>
-            </div>
+                        return (
+                          <tr key={c.id} className="hover:bg-white/[0.02] transition-colors">
+                            <td className="py-3 pl-2 capitalize font-semibold text-slate-200">
+                              {c.category}
+                            </td>
+                            <td className="py-3 font-mono text-[#E6C79C] font-medium">
+                              {formatCurrency(c.estimated_minor, currency)}
+                            </td>
+                            <td className="py-3 font-mono text-slate-300">
+                              {formatCurrency(c.actual_minor, currency)}
+                            </td>
+                            <td
+                              className={`py-3 pr-2 font-mono font-medium ${
+                                isCategoryOver ? "text-rose-400" : "text-[#7CE4B5]"
+                              }`}
+                            >
+                              {formatCurrency(diff, currency)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
 
-            {expenses.length === 0 ? (
-              <div className="text-center py-8 text-xs text-slate-500">
-                No actual expenses recorded yet. Click &quot;Record Expense&quot; to log advance or final payments.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider">
-                      <th className="pb-3 pl-2">Description</th>
-                      <th className="pb-3">Category</th>
-                      <th className="pb-3">Amount Paid</th>
-                      <th className="pb-3">Date</th>
-                      <th className="pb-3 pr-2 text-right">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60">
-                    {expenses.map((e) => (
-                      <tr key={e.id} className="hover:bg-slate-900/40 transition-colors">
-                        <td className="py-3 pl-2 font-medium text-slate-200">{e.description}</td>
-                        <td className="py-3 capitalize text-slate-400">{e.category}</td>
-                        <td className="py-3 font-mono font-semibold text-slate-100">
-                          {formatCurrency(e.actual_minor, e.currency)}
-                        </td>
-                        <td className="py-3 text-slate-400">{formatDate(e.created_at)}</td>
-                        <td className="py-3 pr-2 text-right">
-                          <button
-                            onClick={() => handleDeleteExpense(e.id)}
-                            className="p-1 text-slate-500 hover:text-rose-400 transition-colors"
-                            aria-label="Delete expense"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </Card>
+              {/* Expense Log */}
+              <Card className="space-y-4 border border-white/[0.08]">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                    <Receipt className="w-4 h-4 text-[#C5A880]" />
+                    <span>Recorded Disbursements ({expenses.length})</span>
+                  </h2>
+                  <Button size="sm" variant="outline" onClick={() => setIsExpenseModalOpen(true)}>
+                    Add Record
+                  </Button>
+                </div>
+
+                {expenses.length === 0 ? (
+                  <div className="text-center py-10 text-xs text-slate-400">
+                    No disbursements recorded yet. Click &ldquo;Record Disbursement&rdquo; to log advance or final payments.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-white/[0.08] text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
+                          <th className="pb-3 pl-2">Description</th>
+                          <th className="pb-3">Category</th>
+                          <th className="pb-3">Amount Paid</th>
+                          <th className="pb-3">Date</th>
+                          <th className="pb-3 pr-2 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/[0.04]">
+                        {expenses.map((e) => (
+                          <tr key={e.id} className="hover:bg-white/[0.02] transition-colors">
+                            <td className="py-3 pl-2 font-medium text-slate-200">{e.description}</td>
+                            <td className="py-3 capitalize text-slate-400">{e.category}</td>
+                            <td className="py-3 font-mono font-semibold text-white">
+                              {formatCurrency(e.actual_minor, e.currency)}
+                            </td>
+                            <td className="py-3 text-slate-400">{formatDate(e.created_at)}</td>
+                            <td className="py-3 pr-2 text-right">
+                              {confirmDeleteId === e.id ? (
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    onClick={() => handleDeleteExpense(e.id)}
+                                    className="text-[11px] text-rose-400 font-semibold hover:text-rose-300 px-2 py-0.5"
+                                  >
+                                    Confirm
+                                  </button>
+                                  <button
+                                    onClick={() => setConfirmDeleteId(null)}
+                                    className="text-[11px] text-slate-500 hover:text-slate-300"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => setConfirmDeleteId(e.id)}
+                                  className="p-1 text-slate-500 hover:text-rose-400 transition-colors"
+                                  aria-label="Delete disbursement"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Card>
+            </>
+          )}
         </main>
       </div>
 
       {/* Record Expense Modal */}
       <Modal
         isOpen={isExpenseModalOpen}
-        onClose={() => setIsExpenseModalOpen(false)}
-        title="Record New Expense"
-        description="Add a verified quotation advance or invoice payment to deduct from budget."
+        onClose={() => { setIsExpenseModalOpen(false); setErrorMsg(null); }}
+        title="Record New Disbursement"
+        description="Add a verified partner advance or invoice payment to deduct from budget."
       >
         <form onSubmit={handleAddExpense} className="space-y-4">
+          {errorMsg && (
+            <div className="text-xs text-rose-300 bg-rose-950/60 border border-rose-800/80 rounded-xl px-3.5 py-2">
+              {errorMsg}
+            </div>
+          )}
           <Input
             label="Description"
             required
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="e.g. 20% Advance for Banquet Hall Booking"
+            placeholder="e.g. 20% Advance for Banquet Booking"
           />
 
           <div className="space-y-1.5">
-            <label className="block text-xs font-medium text-slate-300">Category</label>
+            <label className="block text-[11px] font-medium tracking-wider uppercase text-slate-300">Category</label>
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-3.5 py-2 text-sm text-slate-100"
+              className="w-full bg-[#101217] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-[#C5A880]"
             >
               <option value="venue">Venue</option>
               <option value="catering">Catering</option>
@@ -342,7 +397,7 @@ export default function BudgetPage({ params }: { params: Promise<{ id: string }>
           </div>
 
           <Input
-            label="Amount Paid (in INR)"
+            label={`Amount Disbursed (${currency})`}
             type="number"
             required
             value={amountStr}
@@ -351,11 +406,11 @@ export default function BudgetPage({ params }: { params: Promise<{ id: string }>
           />
 
           <div className="flex justify-end gap-3 pt-3">
-            <Button variant="ghost" type="button" onClick={() => setIsExpenseModalOpen(false)}>
+            <Button variant="ghost" type="button" onClick={() => { setIsExpenseModalOpen(false); setErrorMsg(null); }}>
               Cancel
             </Button>
             <Button variant="primary" type="submit" isLoading={isSubmitting}>
-              Save Expense
+              Save Disbursement
             </Button>
           </div>
         </form>

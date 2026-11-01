@@ -3,11 +3,13 @@ import path from "path";
 
 // Note: Using node:sqlite DatabaseSync for zero-dependency native SQLite
 // Dynamically imported or required to ensure compatibility with Next.js edge/server bundling
-let dbInstance: any = null;
+const globalForDb = globalThis as unknown as {
+  dbInstance: any;
+};
 
 export function getDb(): any {
-  if (dbInstance) {
-    return dbInstance;
+  if (globalForDb.dbInstance) {
+    return globalForDb.dbInstance;
   }
 
   // Determine database file path
@@ -25,20 +27,28 @@ export function getDb(): any {
   // Load DatabaseSync
   const { DatabaseSync } = require("node:sqlite");
   
+  let instance: any = null;
   try {
-    dbInstance = new DatabaseSync(dbPath);
+    instance = new DatabaseSync(dbPath);
   } catch (e) {
     console.warn("Falling back to :memory: SQLite database", e);
-    dbInstance = new DatabaseSync(":memory:");
+    instance = new DatabaseSync(":memory:");
   }
 
-  // Enable foreign keys and WAL mode for reliability
-  dbInstance.exec("PRAGMA foreign_keys = ON;");
+  // Enable foreign keys, WAL mode and normal synchronous for lightning fast queries
+  instance.exec("PRAGMA foreign_keys = ON;");
+  try {
+    instance.exec("PRAGMA journal_mode = WAL;");
+    instance.exec("PRAGMA synchronous = NORMAL;");
+  } catch (e) {
+    // Ignore pragma error if in memory
+  }
 
   // Run initial schema migration
-  initSchema(dbInstance);
+  initSchema(instance);
 
-  return dbInstance;
+  globalForDb.dbInstance = instance;
+  return globalForDb.dbInstance;
 }
 
 function initSchema(db: any) {
@@ -216,15 +226,38 @@ export function execute(sql: string, params: any[] = []): { changes: number; las
   return stmt.run(...params);
 }
 
+// Track nesting depth so we can use SAVEPOINTs for nested transactions
+let _txDepth = 0;
+
 export function transaction<T>(fn: () => T): T {
   const db = getDb();
-  db.exec("BEGIN TRANSACTION;");
+  const isNested = _txDepth > 0;
+  const savepointName = `sp_${_txDepth}`;
+
+  if (isNested) {
+    db.exec(`SAVEPOINT ${savepointName};`);
+  } else {
+    db.exec("BEGIN TRANSACTION;");
+  }
+
+  _txDepth++;
   try {
     const result = fn();
-    db.exec("COMMIT;");
+    _txDepth--;
+    if (isNested) {
+      db.exec(`RELEASE SAVEPOINT ${savepointName};`);
+    } else {
+      db.exec("COMMIT;");
+    }
     return result;
   } catch (error) {
-    db.exec("ROLLBACK;");
+    _txDepth--;
+    if (isNested) {
+      db.exec(`ROLLBACK TO SAVEPOINT ${savepointName};`);
+      db.exec(`RELEASE SAVEPOINT ${savepointName};`);
+    } else {
+      db.exec("ROLLBACK;");
+    }
     throw error;
   }
 }

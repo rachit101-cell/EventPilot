@@ -8,11 +8,13 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { EventItem } from "@/types";
 import { formatDate } from "@/lib/utils";
-import { Plus, Calendar, MapPin, Users, Sparkles, ArrowRight, Loader2 } from "lucide-react";
+import { ClientCache } from "@/lib/client-cache";
+import { Plus, Calendar, MapPin, Users, Compass, ArrowRight, Loader2, Sparkles } from "lucide-react";
 
 export default function EventsListPage() {
-  const [events, setEvents] = useState<EventItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const cachedEvents = ClientCache.get<EventItem[]>("events_list");
+  const [events, setEvents] = useState<EventItem[]>(cachedEvents || []);
+  const [isLoading, setIsLoading] = useState(!cachedEvents);
 
   useEffect(() => {
     fetch("/api/events")
@@ -20,6 +22,7 @@ export default function EventsListPage() {
       .then((data) => {
         if (data.data) {
           setEvents(data.data);
+          ClientCache.set("events_list", data.data);
         }
       })
       .catch((e) => console.error(e))
@@ -27,58 +30,63 @@ export default function EventsListPage() {
   }, []);
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 flex flex-col min-h-screen">
       <Navbar />
 
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-8 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-100 tracking-tight">Your Events</h1>
-            <p className="text-xs text-slate-400 mt-1">
-              Select an event to view dashboard, budget, timeline, and vendors
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-8 py-10 space-y-8">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-white/[0.08]">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] tracking-[0.25em] uppercase font-semibold text-[#C5A880]">
+                Private Portfolio
+              </span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Your Event Commissions</h1>
+            <p className="text-xs text-slate-400">
+              Access the executive dashboard, financial ledger, master itinerary, and vendor directory.
             </p>
           </div>
           <Link href="/events/new">
-            <Button variant="primary" className="gap-2 shadow-purple-900/40">
+            <Button variant="primary" className="gap-2 shadow-lg">
               <Plus className="w-4 h-4" />
-              <span>Create Event</span>
+              <span>New Commission</span>
             </Button>
           </Link>
         </div>
 
         {isLoading ? (
           <div className="h-64 flex items-center justify-center">
-            <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
+            <Loader2 className="w-8 h-8 animate-spin text-[#C5A880]" />
           </div>
         ) : events.length === 0 ? (
-          <Card className="text-center py-16 px-6 space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-purple-950/60 border border-purple-800/40 text-purple-400 flex items-center justify-center mx-auto">
-              <Sparkles className="w-6 h-6" />
+          <Card className="text-center py-20 px-6 space-y-5 border border-white/[0.08]">
+            <div className="w-14 h-14 rounded-2xl bg-[#1C1811] border border-[#C5A880]/30 text-[#C5A880] flex items-center justify-center mx-auto shadow-md">
+              <Compass className="w-7 h-7" />
             </div>
-            <div className="space-y-1">
-              <h3 className="text-base font-semibold text-slate-100">No events created yet</h3>
-              <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                Start by describing your wedding, birthday, or community event in natural language.
+            <div className="space-y-1.5 max-w-md mx-auto">
+              <h3 className="text-lg font-semibold text-white tracking-tight">No Active Event Commissions</h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Describe your wedding, milestone gala, or community symposium to let our studio synthesize a tailored master plan.
               </p>
             </div>
             <Link href="/events/new">
               <Button variant="primary" className="gap-2">
                 <Plus className="w-4 h-4" />
-                <span>Start Planning Now</span>
+                <span>Begin Planning Now</span>
               </Button>
             </Link>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {events.map((evt) => (
-              <Link key={evt.id} href={`/events/${evt.id}`}>
-                <Card className="glass-card-hover h-full flex flex-col justify-between space-y-4 cursor-pointer group">
-                  <div className="space-y-3">
+              <Link key={evt.id} href={`/events/${evt.id}`} prefetch={true}>
+                <Card className="glass-card-hover h-full flex flex-col justify-between space-y-5 cursor-pointer group border border-white/[0.08] hover:border-[#C5A880]/40">
+                  <div className="space-y-3.5">
                     <div className="flex items-center justify-between">
                       <Badge
                         variant={
                           evt.event_type === "WEDDING"
-                            ? "purple"
+                            ? "gold"
                             : evt.event_type === "BIRTHDAY"
                             ? "amber"
                             : "blue"
@@ -86,28 +94,28 @@ export default function EventsListPage() {
                       >
                         {evt.event_type}
                       </Badge>
-                      <span className="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">
+                      <span className="text-[10px] text-[#C5A880] tracking-widest uppercase font-semibold">
                         {evt.status}
                       </span>
                     </div>
 
-                    <h3 className="text-base font-bold text-slate-100 group-hover:text-purple-300 transition-colors">
+                    <h3 className="text-lg font-bold text-white group-hover:text-[#E8D5B5] transition-colors leading-snug">
                       {evt.name}
                     </h3>
                   </div>
 
-                  <div className="pt-3 border-t border-slate-800/80 space-y-2 text-xs text-slate-400">
+                  <div className="pt-4 border-t border-white/[0.08] space-y-2.5 text-xs text-slate-400">
                     <div className="flex items-center gap-2">
-                      <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                      <span>{formatDate(evt.date)}</span>
+                      <Calendar className="w-3.5 h-3.5 text-[#C5A880]" />
+                      <span className="text-slate-300 font-medium">{formatDate(evt.date)}</span>
                     </div>
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between pt-0.5">
                       <div className="flex items-center gap-2">
                         <MapPin className="w-3.5 h-3.5 text-slate-500" />
                         <span>{evt.city}</span>
                       </div>
                       <div className="flex items-center gap-1.5 font-medium text-slate-300">
-                        <Users className="w-3.5 h-3.5 text-slate-500" />
+                        <Users className="w-3.5 h-3.5 text-[#C5A880]" />
                         <span>{evt.guest_count} guests</span>
                       </div>
                     </div>

@@ -10,7 +10,8 @@ import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
 import { formatDate } from "@/lib/utils";
-import { Task, TimelineMilestone, TaskStatus } from "@/types";
+import { ClientCache } from "@/lib/client-cache";
+import { Task, TimelineMilestone, TaskStatus, DashboardProjection } from "@/types";
 import {
   Calendar,
   CheckCircle2,
@@ -27,11 +28,15 @@ export default function TimelinePage({ params }: { params: Promise<{ id: string 
   const resolvedParams = use(params);
   const eventId = resolvedParams.id;
 
-  const [milestones, setMilestones] = useState<TimelineMilestone[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
+  // Instant SWR cache read
+  const cachedDashboard = ClientCache.get<DashboardProjection>(`dashboard_${eventId}`);
+
+  const [milestones, setMilestones] = useState<TimelineMilestone[]>(cachedDashboard?.timeline?.milestones || []);
+  const [tasks, setTasks] = useState<Task[]>(cachedDashboard?.timeline?.tasks || []);
   const [filter, setFilter] = useState<string>("ALL");
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!cachedDashboard);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const [confirmDeleteTaskId, setConfirmDeleteTaskId] = useState<string | null>(null);
 
   // Add task modal state
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -48,6 +53,7 @@ export default function TimelinePage({ params }: { params: Promise<{ id: string 
       if (json.data) {
         setMilestones(json.data.timeline.milestones || []);
         setTasks(json.data.timeline.tasks || []);
+        ClientCache.set(`dashboard_${eventId}`, json.data);
       }
     } catch (e) {
       console.error(e);
@@ -62,12 +68,18 @@ export default function TimelinePage({ params }: { params: Promise<{ id: string 
 
   const handleToggleTask = async (taskId: string, currentStatus: TaskStatus) => {
     const newStatus: TaskStatus = currentStatus === "COMPLETED" ? "TODO" : "COMPLETED";
+    // Optimistic UI update
+    setTasks((prev) =>
+      prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
+    );
+
     try {
       await fetch(`/api/events/${eventId}/tasks`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId, status: newStatus }),
       });
+      ClientCache.invalidate(`dashboard_${eventId}`);
       fetchTimeline();
     } catch (e) {
       console.error(e);
@@ -75,10 +87,13 @@ export default function TimelinePage({ params }: { params: Promise<{ id: string 
   };
 
   const handleDeleteTask = async (taskId: string) => {
+    setConfirmDeleteTaskId(null);
+    setTasks((prev) => prev.filter((t) => t.id !== taskId));
     try {
       await fetch(`/api/events/${eventId}/tasks?taskId=${taskId}`, {
         method: "DELETE",
       });
+      ClientCache.invalidate(`dashboard_${eventId}`);
       fetchTimeline();
     } catch (e) {
       console.error(e);
@@ -106,6 +121,7 @@ export default function TimelinePage({ params }: { params: Promise<{ id: string 
       setTaskTitle("");
       setTaskDesc("");
       setTaskDue("");
+      ClientCache.invalidate(`dashboard_${eventId}`);
       fetchTimeline();
     } catch (err) {
       console.error(err);
@@ -121,19 +137,8 @@ export default function TimelinePage({ params }: { params: Promise<{ id: string 
     return true;
   });
 
-  if (isLoading) {
-    return (
-      <div className="flex-1 flex flex-col">
-        <Navbar />
-        <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex-1 flex flex-col min-h-screen">
+    <div className="flex-1 flex flex-col min-h-screen bg-[#05070E]">
       <Navbar onOpenAssistant={() => setIsAssistantOpen(true)} />
 
       <div className="flex-1 flex">
@@ -143,9 +148,14 @@ export default function TimelinePage({ params }: { params: Promise<{ id: string 
           {/* Header */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-bold text-slate-100 tracking-tight">Timeline & Task DAG</h1>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] tracking-[0.2em] uppercase font-semibold text-[#C5A880]">
+                  Master Orchestration
+                </span>
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Master Timeline & Schedule</h1>
               <p className="text-xs text-slate-400 mt-1">
-                Date-aware relative offsets, milestone dependencies, and operational task execution
+                Date-linked relative deadlines, milestone dependencies, and operational deliverables.
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -153,16 +163,16 @@ export default function TimelinePage({ params }: { params: Promise<{ id: string 
                 variant="outline"
                 size="sm"
                 onClick={() => setIsAssistantOpen(true)}
-                className="gap-2 text-purple-300 border-purple-800"
+                className="gap-2"
               >
-                <Sparkles className="w-4 h-4 text-purple-400" />
-                <span>Adjust Deadlines with AI</span>
+                <Sparkles className="w-4 h-4 text-[#C5A880]" />
+                <span>Adjust Deadlines with Concierge</span>
               </Button>
               <Button
                 variant="primary"
                 size="sm"
                 onClick={() => setIsTaskModalOpen(true)}
-                className="gap-2 shadow-purple-900/40"
+                className="gap-2 shadow-lg"
               >
                 <Plus className="w-4 h-4" />
                 <span>Add Task</span>
@@ -170,122 +180,146 @@ export default function TimelinePage({ params }: { params: Promise<{ id: string 
             </div>
           </div>
 
-          {/* Milestones Road */}
-          <Card className="space-y-4">
-            <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-purple-400" />
-              <span>Milestone Roadmap ({milestones.length})</span>
-            </h2>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-              {milestones.map((m, idx) => (
-                <div
-                  key={m.id}
-                  className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1.5 relative"
-                >
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-mono text-purple-400 font-bold">Step {idx + 1}</span>
-                    <Badge variant={m.status === "COMPLETED" ? "emerald" : "slate"}>{m.status}</Badge>
-                  </div>
-                  <h4 className="text-xs font-semibold text-slate-200 line-clamp-2">{m.title}</h4>
-                  <p className="text-[11px] text-slate-400 font-mono pt-1">{formatDate(m.due_at)}</p>
-                </div>
-              ))}
+          {isLoading && tasks.length === 0 ? (
+            <div className="space-y-6 animate-pulse">
+              <div className="h-32 bg-[#0D111A]/80 rounded-2xl border border-white/[0.08]" />
+              <div className="h-64 bg-[#0D111A]/80 rounded-2xl border border-white/[0.08]" />
             </div>
-          </Card>
+          ) : (
+            <>
+              {/* Milestones Road */}
+              <Card className="space-y-4 border border-white/[0.08]">
+                <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-[#C5A880]" />
+                  <span>Milestone Roadmap ({milestones.length})</span>
+                </h2>
 
-          {/* Filter Bar & Task List */}
-          <Card className="space-y-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-slate-400 font-semibold uppercase tracking-wider">Filter:</span>
-                <div className="flex gap-1.5">
-                  {["ALL", "PENDING", "COMPLETED", "HIGH_PRIORITY"].map((f) => (
-                    <button
-                      key={f}
-                      onClick={() => setFilter(f)}
-                      className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
-                        filter === f
-                          ? "bg-purple-600 text-white"
-                          : "bg-slate-800/80 text-slate-300 hover:bg-slate-700"
-                      }`}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                  {milestones.map((m, idx) => (
+                    <div
+                      key={m.id}
+                      className="p-3.5 rounded-xl bg-[#0D111A] border border-white/[0.08] space-y-1.5 relative hover:border-[#C5A880]/30 transition-colors"
                     >
-                      {f.replace("_", " ")}
-                    </button>
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-mono text-[#C5A880] font-bold">Phase {idx + 1}</span>
+                        <Badge variant={m.status === "COMPLETED" ? "emerald" : "slate"}>{m.status}</Badge>
+                      </div>
+                      <h4 className="text-xs font-semibold text-slate-200 line-clamp-2">{m.title}</h4>
+                      <p className="text-[11px] text-slate-400 font-mono pt-1">{formatDate(m.due_at)}</p>
+                    </div>
                   ))}
                 </div>
-              </div>
+              </Card>
 
-              <span className="text-xs text-slate-400 font-medium">
-                Showing {filteredTasks.length} of {tasks.length} tasks
-              </span>
-            </div>
+              {/* Filter Bar & Task List */}
+              <Card className="space-y-4 border border-white/[0.08]">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-white/[0.08]">
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-slate-400 font-semibold uppercase tracking-wider text-[10px]">Filter View:</span>
+                    <div className="flex gap-1.5">
+                      {["ALL", "PENDING", "COMPLETED", "HIGH_PRIORITY"].map((f) => (
+                        <button
+                          key={f}
+                          onClick={() => setFilter(f)}
+                          className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+                            filter === f
+                              ? "bg-[#C5A880] text-[#0A0B0E] font-semibold"
+                              : "bg-[#14161C] text-slate-300 hover:bg-[#1E2028]"
+                          }`}
+                        >
+                          {f.replace("_", " ")}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-            <div className="space-y-2">
-              {filteredTasks.length === 0 ? (
-                <div className="text-center py-8 text-xs text-slate-500">No tasks in this view.</div>
-              ) : (
-                filteredTasks.map((t) => {
-                  const isDone = t.status === "COMPLETED";
-                  return (
-                    <div
-                      key={t.id}
-                      className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 text-xs transition-colors ${
-                        isDone
-                          ? "bg-slate-900/30 border-slate-800/50 text-slate-500"
-                          : "bg-slate-900/70 border-slate-800 text-slate-200"
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <input
-                          type="checkbox"
-                          checked={isDone}
-                          onChange={() => handleToggleTask(t.id, t.status)}
-                          className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-purple-600 focus:ring-purple-500 cursor-pointer mt-0.5"
-                        />
-                        <div className="space-y-0.5">
-                          <span className={`font-semibold ${isDone ? "line-through text-slate-500" : ""}`}>
-                            {t.title}
-                          </span>
-                          {t.description && (
-                            <p className="text-[11px] text-slate-400 leading-relaxed max-w-xl">
-                              {t.description}
-                            </p>
-                          )}
-                          <div className="flex items-center gap-3 text-[11px] text-slate-400 pt-0.5">
-                            {t.due_at && <span>Target Due: {formatDate(t.due_at)}</span>}
-                            <span className="text-slate-500">|</span>
-                            <span className="text-slate-500 font-mono text-[10px] uppercase">{t.source}</span>
+                  <span className="text-xs text-slate-400 font-medium">
+                    Showing {filteredTasks.length} of {tasks.length} items
+                  </span>
+                </div>
+
+                <div className="space-y-2.5">
+                  {filteredTasks.length === 0 ? (
+                    <div className="text-center py-10 text-xs text-slate-400">No tasks in this view.</div>
+                  ) : (
+                    filteredTasks.map((t) => {
+                      const isDone = t.status === "COMPLETED";
+                      return (
+                        <div
+                          key={t.id}
+                          className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 text-xs transition-colors ${
+                            isDone
+                              ? "bg-[#0A0B0E]/40 border-white/[0.04] text-slate-500"
+                              : "bg-[#0D111A] border-white/[0.08] text-slate-200 hover:border-[#C5A880]/30"
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <input
+                              type="checkbox"
+                              checked={isDone}
+                              onChange={() => handleToggleTask(t.id, t.status)}
+                              className="w-4 h-4 rounded border-white/20 bg-[#14161C] text-[#C5A880] focus:ring-[#C5A880] cursor-pointer mt-0.5"
+                            />
+                            <div className="space-y-0.5">
+                              <span className={`font-semibold ${isDone ? "line-through text-slate-500" : "text-white"}`}>
+                                {t.title}
+                              </span>
+                              {t.description && (
+                                <p className="text-[11px] text-slate-400 leading-relaxed max-w-xl font-light">
+                                  {t.description}
+                                </p>
+                              )}
+                              <div className="flex items-center gap-3 text-[11px] text-slate-400 pt-0.5">
+                                {t.due_at && <span>Target Due: {formatDate(t.due_at)}</span>}
+                              </div>
+                            </div>
                           </div>
+
+                          <div className="flex items-center gap-3 shrink-0">
+                            <Badge
+                              variant={
+                                t.priority === "URGENT"
+                                  ? "rose"
+                                  : t.priority === "HIGH"
+                                  ? "amber"
+                                  : "slate"
+                              }
+                            >
+                              {t.priority}
+                            </Badge>
+                            {confirmDeleteTaskId === t.id ? (
+                              <div className="flex items-center gap-2">
+                                <button
+                                onClick={() => handleDeleteTask(t.id)}
+                                className="text-[11px] text-rose-400 font-semibold hover:text-rose-300 px-2 py-0.5"
+                              >
+                                Confirm
+                              </button>
+                              <button
+                                onClick={() => setConfirmDeleteTaskId(null)}
+                                className="text-[11px] text-slate-500 hover:text-slate-300"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setConfirmDeleteTaskId(t.id)}
+                              className="p-1 text-slate-500 hover:text-rose-400 transition-colors"
+                              aria-label="Delete task"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </div>
-
-                      <div className="flex items-center gap-3 shrink-0">
-                        <Badge
-                          variant={
-                            t.priority === "URGENT"
-                              ? "rose"
-                              : t.priority === "HIGH"
-                              ? "amber"
-                              : "slate"
-                          }
-                        >
-                          {t.priority}
-                        </Badge>
-                        <button
-                          onClick={() => handleDeleteTask(t.id)}
-                          className="p-1 text-slate-500 hover:text-rose-400 transition-colors"
-                          aria-label="Delete task"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </Card>
+                    );
+                  })
+                )}
+              </div>
+            </Card>
+            </>
+          )}
         </main>
       </div>
 
@@ -306,13 +340,13 @@ export default function TimelinePage({ params }: { params: Promise<{ id: string 
           />
 
           <div className="space-y-1.5">
-            <label className="block text-xs font-medium text-slate-300">Description</label>
+            <label className="block text-[11px] font-medium tracking-wider uppercase text-slate-300">Description</label>
             <textarea
               rows={2}
               value={taskDesc}
               onChange={(e) => setTaskDesc(e.target.value)}
               placeholder="Operational instructions or notes..."
-              className="w-full bg-slate-900 border border-slate-700/80 rounded-lg p-2.5 text-xs text-slate-100 placeholder-slate-500"
+              className="w-full bg-[#101217] border border-white/10 rounded-xl p-3 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-[#C5A880]"
             />
           </div>
 
@@ -324,11 +358,11 @@ export default function TimelinePage({ params }: { params: Promise<{ id: string 
               onChange={(e) => setTaskDue(e.target.value)}
             />
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-slate-300">Priority</label>
+              <label className="block text-[11px] font-medium tracking-wider uppercase text-slate-300">Priority</label>
               <select
                 value={taskPriority}
                 onChange={(e) => setTaskPriority(e.target.value)}
-                className="w-full bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-2.5 text-xs text-slate-100"
+                className="w-full bg-[#101217] border border-white/10 rounded-xl px-3 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-[#C5A880]"
               >
                 <option value="LOW">Low</option>
                 <option value="MEDIUM">Medium</option>

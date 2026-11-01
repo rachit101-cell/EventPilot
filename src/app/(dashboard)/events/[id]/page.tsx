@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { DashboardProjection } from "@/types";
 import { formatCurrency, formatDate, getDaysRemaining } from "@/lib/utils";
+import { ClientCache } from "@/lib/client-cache";
 import {
   Sparkles,
   Calendar,
@@ -17,21 +18,22 @@ import {
   MapPin,
   Wallet,
   CheckCircle2,
-  AlertTriangle,
   ArrowRight,
   Clock,
   CheckSquare,
   ShieldAlert,
   Loader2,
-  TrendingDown,
+  Compass,
 } from "lucide-react";
 
 export default function EventDashboardPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const eventId = resolvedParams.id;
 
-  const [data, setData] = useState<DashboardProjection | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  // Instant SWR cache read
+  const cachedData = ClientCache.get<DashboardProjection>(`dashboard_${eventId}`);
+  const [data, setData] = useState<DashboardProjection | null>(cachedData);
+  const [isLoading, setIsLoading] = useState(!cachedData);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
 
   const fetchDashboard = async () => {
@@ -40,6 +42,7 @@ export default function EventDashboardPage({ params }: { params: Promise<{ id: s
       const json = await res.json();
       if (json.data) {
         setData(json.data);
+        ClientCache.set(`dashboard_${eventId}`, json.data);
       }
     } catch (e) {
       console.error("Dashboard error", e);
@@ -54,6 +57,24 @@ export default function EventDashboardPage({ params }: { params: Promise<{ id: s
 
   const handleToggleTask = async (taskId: string, currentStatus: string) => {
     const newStatus = currentStatus === "COMPLETED" ? "TODO" : "COMPLETED";
+    // Optimistic update
+    if (data) {
+      const updatedTasks = data.timeline.tasks.map((t) =>
+        t.id === taskId ? { ...t, status: newStatus as any } : t
+      );
+      const completedCount = updatedTasks.filter((t) => t.status === "COMPLETED").length;
+      const updated = {
+        ...data,
+        timeline: {
+          ...data.timeline,
+          tasks: updatedTasks,
+          completed_task_count: completedCount,
+        },
+      };
+      setData(updated);
+      ClientCache.set(`dashboard_${eventId}`, updated);
+    }
+
     try {
       await fetch(`/api/events/${eventId}/tasks`, {
         method: "PATCH",
@@ -66,362 +87,352 @@ export default function EventDashboardPage({ params }: { params: Promise<{ id: s
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex-1 flex flex-col">
-        <Navbar />
-        <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="w-8 h-8 animate-spin text-purple-500" />
-        </div>
-      </div>
-    );
-  }
-
-  if (!data) {
-    return (
-      <div className="flex-1 flex flex-col">
-        <Navbar />
-        <div className="flex-1 flex items-center justify-center p-6">
-          <Card className="text-center p-8 space-y-3">
-            <h2 className="text-lg font-bold text-slate-100">Event Not Found</h2>
-            <Link href="/events">
-              <Button variant="primary">Return to Events</Button>
-            </Link>
-          </Card>
-        </div>
-      </div>
-    );
-  }
-
-  const { event, budget, timeline, vendors, recommendations } = data;
-  const daysLeft = getDaysRemaining(event.date);
-
-  const budgetSpentPct = budget.total_minor > 0
-    ? Math.min(100, Math.round((budget.actual_spent_minor / budget.total_minor) * 100))
-    : 0;
-
-  const tasksPct = timeline.total_task_count > 0
-    ? Math.round((timeline.completed_task_count / timeline.total_task_count) * 100)
-    : 0;
-
   return (
-    <div className="flex-1 flex flex-col min-h-screen">
-      <Navbar eventName={event.name} onOpenAssistant={() => setIsAssistantOpen(true)} />
+    <div className="flex-1 flex flex-col min-h-screen bg-[#05070E]">
+      <Navbar eventName={data?.event?.name} onOpenAssistant={() => setIsAssistantOpen(true)} />
 
       <div className="flex-1 flex">
         <Sidebar eventId={eventId} />
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto w-full">
-          {/* Header Card */}
-          <div className="glass-card rounded-2xl p-6 relative overflow-hidden flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-slate-800">
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-2">
-                <Badge variant={event.event_type === "WEDDING" ? "purple" : "amber"}>
-                  {event.event_type}
-                </Badge>
-                <span className="text-xs text-slate-400 font-medium">{event.style || "Modern Traditional"}</span>
-              </div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-100 tracking-tight">
-                {event.name}
-              </h1>
-              <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400 pt-1">
-                <div className="flex items-center gap-1.5">
-                  <Calendar className="w-3.5 h-3.5 text-purple-400" />
-                  <span>{formatDate(event.date)}</span>
-                  {daysLeft !== null && (
-                    <span className="text-purple-300 font-medium">({daysLeft} days left)</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-rose-400" />
-                  <span>{event.city}</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Users className="w-3.5 h-3.5 text-indigo-400" />
-                  <span className="font-semibold text-slate-200">{event.guest_count} Guests</span>
-                </div>
+          {isLoading && !data ? (
+            <div className="space-y-6 animate-pulse">
+              <div className="h-32 bg-[#0D111A]/80 rounded-2xl border border-white/[0.08]" />
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                <div className="h-24 bg-[#0D111A]/80 rounded-2xl border border-white/[0.08]" />
+                <div className="h-24 bg-[#0D111A]/80 rounded-2xl border border-white/[0.08]" />
+                <div className="h-24 bg-[#0D111A]/80 rounded-2xl border border-white/[0.08]" />
+                <div className="h-24 bg-[#0D111A]/80 rounded-2xl border border-white/[0.08]" />
               </div>
             </div>
-
-            <Button
-              variant="primary"
-              onClick={() => setIsAssistantOpen(true)}
-              className="gap-2 shadow-lg shadow-purple-900/40 shrink-0"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>Modify Plan with AI</span>
-            </Button>
-          </div>
-
-          {/* Overspend Warning Banner */}
-          {budget.is_over_budget && (
-            <div className="bg-rose-950/40 border border-rose-800/80 rounded-2xl p-4 flex items-center justify-between gap-3 text-xs text-rose-200 animate-in fade-in">
-              <div className="flex items-center gap-2.5">
-                <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
-                <div>
-                  <span className="font-bold">Overspend Warning:</span> Actual spend exceeds total budget by{" "}
-                  <span className="font-mono font-bold text-rose-300">
-                    {formatCurrency(budget.actual_spent_minor - budget.total_minor, budget.currency)}
-                  </span>
-                  . Consider reducing decoration or using contingency.
-                </div>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setIsAssistantOpen(true)}
-                className="shrink-0 text-rose-300 border-rose-700 hover:bg-rose-900/30"
-              >
-                Auto-Balance
-              </Button>
-            </div>
-          )}
-
-          {/* Metric Cards Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Total Budget */}
-            <Card className="space-y-2">
-              <div className="flex items-center justify-between text-slate-400 text-xs font-medium">
-                <span>Total Budget</span>
-                <Wallet className="w-4 h-4 text-purple-400" />
-              </div>
-              <div className="text-xl font-bold font-mono text-slate-100">
-                {formatCurrency(budget.total_minor, budget.currency)}
-              </div>
-              <p className="text-[11px] text-slate-400">
-                Allocated: {formatCurrency(budget.allocated_minor, budget.currency)}
-              </p>
+          ) : !data ? (
+            <Card className="text-center p-8 space-y-4 max-w-md mx-auto border border-white/10">
+              <h2 className="text-lg font-bold text-white">Commission Not Found</h2>
+              <Link href="/events">
+                <Button variant="primary">Return to Portfolio</Button>
+              </Link>
             </Card>
-
-            {/* Spent & Remaining */}
-            <Card className="space-y-2">
-              <div className="flex items-center justify-between text-slate-400 text-xs font-medium">
-                <span>Remaining Balance</span>
-                <span className={`text-[11px] font-bold ${budget.remaining_minor < 0 ? "text-rose-400" : "text-emerald-400"}`}>
-                  {budgetSpentPct}% spent
-                </span>
-              </div>
-              <div
-                className={`text-xl font-bold font-mono ${
-                  budget.remaining_minor < 0 ? "text-rose-400" : "text-emerald-300"
-                }`}
-              >
-                {formatCurrency(budget.remaining_minor, budget.currency)}
-              </div>
-              <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                <div
-                  className={`h-full rounded-full ${budget.is_over_budget ? "bg-rose-500" : "bg-purple-500"}`}
-                  style={{ width: `${budgetSpentPct}%` }}
-                />
-              </div>
-            </Card>
-
-            {/* Tasks Progress */}
-            <Card className="space-y-2">
-              <div className="flex items-center justify-between text-slate-400 text-xs font-medium">
-                <span>Preparation Tasks</span>
-                <CheckSquare className="w-4 h-4 text-indigo-400" />
-              </div>
-              <div className="text-xl font-bold text-slate-100">
-                {timeline.completed_task_count} / {timeline.total_task_count}
-              </div>
-              <p className="text-[11px] text-slate-400">
-                {timeline.overdue_task_count > 0 ? (
-                  <span className="text-rose-400 font-semibold">{timeline.overdue_task_count} overdue</span>
-                ) : (
-                  <span className="text-emerald-400">All tasks on schedule</span>
-                )}
-              </p>
-            </Card>
-
-            {/* Vendors Summary */}
-            <Card className="space-y-2">
-              <div className="flex items-center justify-between text-slate-400 text-xs font-medium">
-                <span>Vendor Checklist</span>
-                <Users className="w-4 h-4 text-emerald-400" />
-              </div>
-              <div className="text-xl font-bold text-slate-100">
-                {vendors.checklist.length} Roles
-              </div>
-              <p className="text-[11px] text-slate-400 font-mono">
-                Quoted: {formatCurrency(vendors.total_quoted_minor, budget.currency)}
-              </p>
-            </Card>
-          </div>
-
-          {/* Two-Column Working Area */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left 2 Cols: Budget Allocations & Priority Tasks */}
-            <div className="lg:col-span-2 space-y-6">
-              {/* Category Breakdown */}
-              <Card className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider">
-                      Budget Allocations (Benchmark Ratios)
-                    </h2>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      Deterministic allocation matching confirmed total with 0 drift
-                    </p>
-                  </div>
-                  <Link href={`/events/${eventId}/budget`}>
-                    <Button size="sm" variant="outline" className="text-xs">
-                      View Details
-                    </Button>
-                  </Link>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {budget.categories.slice(0, 6).map((c) => (
-                    <div
-                      key={c.id}
-                      className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center justify-between text-xs"
-                    >
-                      <div>
-                        <span className="capitalize font-semibold text-slate-200">{c.category}</span>
-                        <div className="text-[11px] text-slate-400 font-mono mt-0.5">
-                          Spent: {formatCurrency(c.actual_minor, budget.currency)}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-mono font-bold text-purple-300">
-                          {formatCurrency(c.estimated_minor, budget.currency)}
-                        </div>
-                        <span className="text-[10px] text-slate-500 uppercase tracking-wider">{c.source}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </Card>
-
-              {/* Tasks Checklist */}
-              <Card className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-sm font-bold text-slate-100 uppercase tracking-wider">
-                      Actionable Milestones & Tasks
-                    </h2>
-                    <p className="text-xs text-slate-400 mt-0.5">Checked tasks update instantly in database</p>
-                  </div>
-                  <Link href={`/events/${eventId}/timeline`}>
-                    <Button size="sm" variant="outline" className="text-xs">
-                      All Tasks ({timeline.total_task_count})
-                    </Button>
-                  </Link>
-                </div>
-
+          ) : (
+            <>
+              {/* Header Card */}
+              <div className="glass-card rounded-2xl p-6 sm:p-8 relative overflow-hidden flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 border border-white/[0.08]">
                 <div className="space-y-2">
-                  {timeline.tasks.slice(0, 5).map((t) => {
-                    const isDone = t.status === "COMPLETED";
-                    return (
-                      <div
-                        key={t.id}
-                        className={`p-3 rounded-xl border flex items-center justify-between gap-3 text-xs transition-colors ${
-                          isDone
-                            ? "bg-slate-900/30 border-slate-800/50 text-slate-500"
-                            : "bg-slate-900/70 border-slate-800 text-slate-200"
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="checkbox"
-                            checked={isDone}
-                            onChange={() => handleToggleTask(t.id, t.status)}
-                            className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-purple-600 focus:ring-purple-500 cursor-pointer"
-                          />
-                          <div>
-                            <span className={`font-medium ${isDone ? "line-through text-slate-500" : ""}`}>
-                              {t.title}
-                            </span>
-                            {t.due_at && (
-                              <p className="text-[11px] text-slate-400 mt-0.5">Due: {formatDate(t.due_at)}</p>
-                            )}
-                          </div>
-                        </div>
-
-                        <Badge
-                          variant={
-                            t.priority === "URGENT"
-                              ? "rose"
-                              : t.priority === "HIGH"
-                              ? "amber"
-                              : "slate"
-                          }
-                        >
-                          {t.priority}
-                        </Badge>
-                      </div>
-                    );
-                  })}
-                </div>
-              </Card>
-            </div>
-
-            {/* Right Column: Personalized Ideas & Timeline Milestones */}
-            <div className="space-y-6">
-              {/* Personalized Ideas */}
-              <Card className="space-y-3 bg-purple-950/20 border-purple-900/40">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-sm font-bold text-purple-300">
-                    <Sparkles className="w-4 h-4 text-purple-400" />
-                    <span>Personalized Event Ideas</span>
+                  <div className="flex items-center gap-2.5">
+                    <Badge variant={data.event.event_type === "WEDDING" ? "gold" : "amber"}>
+                      {data.event.event_type}
+                    </Badge>
+                    <span className="text-[11px] text-[#C5A880] tracking-wider uppercase font-semibold">
+                      {data.event.style || "Modern Traditional"}
+                    </span>
                   </div>
-                  <Link href={`/events/${eventId}/ideas`}>
-                    <Button size="sm" variant="ghost" className="text-xs text-purple-300">
-                      Explore
-                    </Button>
-                  </Link>
-                </div>
-
-                <div className="space-y-3">
-                  {recommendations.slice(0, 3).map((idea) => (
-                    <div
-                      key={idea.id}
-                      className="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1.5"
-                    >
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-slate-200">{idea.title}</span>
-                        <Badge variant="purple">{idea.kind}</Badge>
-                      </div>
-                      <p className="text-[11px] text-slate-300 leading-relaxed">{idea.description}</p>
-                      {idea.cost_range && (
-                        <p className="text-[10px] text-emerald-400 font-mono">Estimated: {idea.cost_range}</p>
+                  <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
+                    {data.event.name}
+                  </h1>
+                  <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-xs text-slate-400 pt-1">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-[#C5A880]" />
+                      <span className="text-slate-200 font-medium">{formatDate(data.event.date)}</span>
+                      {getDaysRemaining(data.event.date) !== null && (
+                        <span className="text-[#C5A880] font-semibold">({getDaysRemaining(data.event.date)} days remaining)</span>
                       )}
                     </div>
-                  ))}
-                </div>
-              </Card>
-
-              {/* Milestones Road */}
-              <Card className="space-y-3">
-                <div className="text-sm font-bold text-slate-100 uppercase tracking-wider flex items-center justify-between">
-                  <span>Milestone Deadlines</span>
-                  <Calendar className="w-4 h-4 text-purple-400" />
-                </div>
-                <div className="space-y-2.5">
-                  {timeline.milestones.slice(0, 4).map((m) => (
-                    <div
-                      key={m.id}
-                      className="p-2.5 rounded-xl bg-slate-900/50 border border-slate-800 text-xs flex items-center justify-between"
-                    >
-                      <span className="text-slate-200 font-medium truncate max-w-[180px]">{m.title}</span>
-                      <span className="font-mono text-purple-300 text-[11px] shrink-0">{formatDate(m.due_at)}</span>
+                    <div className="flex items-center gap-1.5">
+                      <MapPin className="w-4 h-4 text-rose-400" />
+                      <span className="text-slate-200">{data.event.city}</span>
                     </div>
-                  ))}
+                    <div className="flex items-center gap-1.5">
+                      <Users className="w-4 h-4 text-[#8EB8E5]" />
+                      <span className="font-semibold text-slate-100">{data.event.guest_count} Confirmed Guests</span>
+                    </div>
+                  </div>
                 </div>
-              </Card>
-            </div>
-          </div>
+
+                <Button
+                  variant="primary"
+                  onClick={() => setIsAssistantOpen(true)}
+                  className="gap-2 shadow-xl shrink-0"
+                >
+                  <Sparkles className="w-4 h-4 text-[#0A0B0E]" />
+                  <span>Consult Concierge</span>
+                </Button>
+              </div>
+
+              {/* Overspend Warning Banner */}
+              {data.budget.is_over_budget && (
+                <div className="bg-rose-950/60 border border-rose-800/80 rounded-2xl p-4 flex items-center justify-between gap-4 text-xs text-rose-200 animate-in fade-in">
+                  <div className="flex items-center gap-3">
+                    <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />
+                    <div>
+                      <span className="font-bold">Budget Variance Notice:</span> Actual commitments exceed target allocation by{" "}
+                      <span className="font-mono font-bold text-rose-300">
+                        {formatCurrency(data.budget.actual_spent_minor - data.budget.total_minor, data.budget.currency)}
+                      </span>
+                      . Consult your concierge to rebalance categories or release reserve funds.
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setIsAssistantOpen(true)}
+                    className="shrink-0 text-rose-300 border-rose-700/80 hover:bg-rose-900/40"
+                  >
+                    Rebalance
+                  </Button>
+                </div>
+              )}
+
+              {/* Executive Metric Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Total Budget */}
+                <Card className="space-y-2 border border-white/[0.08]">
+                  <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold tracking-wider uppercase">
+                    <span>Target Capital</span>
+                    <Wallet className="w-4 h-4 text-[#C5A880]" />
+                  </div>
+                  <div className="text-2xl font-bold font-mono text-white">
+                    {formatCurrency(data.budget.total_minor, data.budget.currency)}
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Allocated: <span className="text-slate-200 font-mono">{formatCurrency(data.budget.allocated_minor, data.budget.currency)}</span>
+                  </p>
+                </Card>
+
+                {/* Spent & Remaining */}
+                <Card className="space-y-2 border border-white/[0.08]">
+                  <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold tracking-wider uppercase">
+                    <span>Disbursed Capital</span>
+                    <span className={`text-[11px] font-bold ${data.budget.remaining_minor < 0 ? "text-rose-400" : "text-[#C5A880]"}`}>
+                      {data.budget.total_minor > 0
+                        ? Math.min(100, Math.round((data.budget.actual_spent_minor / data.budget.total_minor) * 100))
+                        : 0}% utilized
+                    </span>
+                  </div>
+                  <div
+                    className={`text-2xl font-bold font-mono ${
+                      data.budget.remaining_minor < 0 ? "text-rose-400" : "text-[#7CE4B5]"
+                    }`}
+                  >
+                    {formatCurrency(data.budget.remaining_minor, data.budget.currency)}
+                  </div>
+                  <div className="w-full bg-[#181A22] rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${data.budget.is_over_budget ? "bg-rose-500" : "bg-gradient-to-r from-[#C5A880] to-[#E6C79C]"}`}
+                      style={{
+                        width: `${data.budget.total_minor > 0
+                          ? Math.min(100, Math.round((data.budget.actual_spent_minor / data.budget.total_minor) * 100))
+                          : 0}%`
+                      }}
+                    />
+                  </div>
+                </Card>
+
+                {/* Tasks Progress */}
+                <Card className="space-y-2 border border-white/[0.08]">
+                  <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold tracking-wider uppercase">
+                    <span>Itinerary Milestones</span>
+                    <CheckSquare className="w-4 h-4 text-[#8EB8E5]" />
+                  </div>
+                  <div className="text-2xl font-bold text-white">
+                    {data.timeline.completed_task_count} / {data.timeline.total_task_count}
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    {data.timeline.overdue_task_count > 0 ? (
+                      <span className="text-rose-400 font-semibold">{data.timeline.overdue_task_count} overdue</span>
+                    ) : (
+                      <span className="text-[#7CE4B5]">All milestones on schedule</span>
+                    )}
+                  </p>
+                </Card>
+
+                {/* Vendors Summary */}
+                <Card className="space-y-2 border border-white/[0.08]">
+                  <div className="flex items-center justify-between text-slate-400 text-[11px] font-semibold tracking-wider uppercase">
+                    <span>Vendor Directory</span>
+                    <Users className="w-4 h-4 text-[#7CE4B5]" />
+                  </div>
+                  <div className="text-2xl font-bold text-white">
+                    {data.vendors.checklist.length} Categories
+                  </div>
+                  <p className="text-[11px] text-slate-400 font-mono">
+                    Quoted: <span className="text-slate-200">{formatCurrency(data.vendors.total_quoted_minor, data.budget.currency)}</span>
+                  </p>
+                </Card>
+              </div>
+
+              {/* Two-Column Working Area */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Left 2 Cols: Budget Allocations & Priority Tasks */}
+                <div className="lg:col-span-2 space-y-6">
+                  {/* Category Breakdown */}
+                  <Card className="space-y-4 border border-white/[0.08]">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="text-sm font-bold text-white uppercase tracking-wider">
+                          Financial Allocations
+                        </h2>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          Sub-budget allocations matching target capital with zero drift
+                        </p>
+                      </div>
+                      <Link href={`/events/${eventId}/budget`}>
+                        <Button size="sm" variant="outline" className="text-xs">
+                          Ledger View
+                        </Button>
+                      </Link>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {data.budget.categories.slice(0, 6).map((c) => (
+                        <div
+                          key={c.id}
+                          className="p-3.5 rounded-xl bg-[#0D111A] border border-white/[0.08] flex items-center justify-between text-xs"
+                        >
+                          <div>
+                            <span className="capitalize font-semibold text-slate-200">{c.category}</span>
+                            <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                              Disbursed: {formatCurrency(c.actual_minor, data.budget.currency)}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-mono font-bold text-[#E6C79C]">
+                              {formatCurrency(c.estimated_minor, data.budget.currency)}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+
+                  {/* Tasks Checklist */}
+                  <Card className="space-y-4 border border-white/[0.08]">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="text-sm font-bold text-white uppercase tracking-wider">
+                          Priority Action Items
+                        </h2>
+                        <p className="text-xs text-slate-400 mt-0.5">Check tasks off as you complete them</p>
+                      </div>
+                      <Link href={`/events/${eventId}/timeline`}>
+                        <Button size="sm" variant="outline" className="text-xs">
+                          Full Schedule ({data.timeline.total_task_count})
+                        </Button>
+                      </Link>
+                    </div>
+
+                    <div className="space-y-2.5">
+                      {data.timeline.tasks.slice(0, 5).map((t) => {
+                        const isDone = t.status === "COMPLETED";
+                        return (
+                          <div
+                            key={t.id}
+                            className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 text-xs transition-colors ${
+                              isDone
+                                ? "bg-[#0A0B0E]/40 border-white/[0.04] text-slate-500"
+                                : "bg-[#0D111A] border-white/[0.08] text-slate-200 hover:border-[#C5A880]/30"
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                checked={isDone}
+                                onChange={() => handleToggleTask(t.id, t.status)}
+                                className="w-4 h-4 rounded border-white/20 bg-[#14161C] text-[#C5A880] focus:ring-[#C5A880] cursor-pointer"
+                              />
+                              <div>
+                                <span className={`font-medium ${isDone ? "line-through text-slate-500" : "text-white"}`}>
+                                  {t.title}
+                                </span>
+                                {t.due_at && (
+                                  <p className="text-[11px] text-slate-400 mt-0.5">Target: {formatDate(t.due_at)}</p>
+                                )}
+                              </div>
+                            </div>
+
+                            <Badge
+                              variant={
+                                t.priority === "URGENT"
+                                  ? "rose"
+                                  : t.priority === "HIGH"
+                                  ? "amber"
+                                  : "slate"
+                              }
+                            >
+                              {t.priority}
+                            </Badge>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Card>
+                </div>
+
+                {/* Right Column: Curated Concepts & Timeline Milestones */}
+                <div className="space-y-6">
+                  {/* Curated Concepts */}
+                  <Card className="space-y-3.5 bg-[#121622] border-[#C5A880]/25">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-sm font-bold text-[#E6C79C]">
+                        <Sparkles className="w-4 h-4 text-[#C5A880]" />
+                        <span>Curated Concepts</span>
+                      </div>
+                      <Link href={`/events/${eventId}/ideas`}>
+                        <Button size="sm" variant="ghost" className="text-xs text-[#E6C79C] hover:text-white">
+                          Lookbook
+                        </Button>
+                      </Link>
+                    </div>
+
+                    <div className="space-y-3">
+                      {data.recommendations.slice(0, 3).map((idea) => (
+                        <div
+                          key={idea.id}
+                          className="p-3.5 rounded-xl bg-[#0D111A]/90 border border-white/[0.08] space-y-1.5"
+                        >
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-semibold text-slate-200">{idea.title}</span>
+                            <Badge variant="gold">{idea.kind}</Badge>
+                          </div>
+                          <p className="text-[11px] text-slate-300 leading-relaxed font-light">{idea.description}</p>
+                          {idea.cost_range && (
+                            <p className="text-[10px] text-[#7CE4B5] font-mono">Estimated: {idea.cost_range}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+
+                  {/* Milestones Road */}
+                  <Card className="space-y-3.5 border border-white/[0.08]">
+                    <div className="text-sm font-bold text-white uppercase tracking-wider flex items-center justify-between">
+                      <span>Milestone Deadlines</span>
+                      <Calendar className="w-4 h-4 text-[#C5A880]" />
+                    </div>
+                    <div className="space-y-2.5">
+                      {data.timeline.milestones.slice(0, 4).map((m) => (
+                        <div
+                          key={m.id}
+                          className="p-3 rounded-xl bg-[#0D111A] border border-white/[0.08] text-xs flex items-center justify-between"
+                        >
+                          <span className="text-slate-200 font-medium truncate max-w-[180px]">{m.title}</span>
+                          <span className="font-mono text-[#E6C79C] text-[11px] shrink-0">{formatDate(m.due_at)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                </div>
+              </div>
+            </>
+          )}
         </main>
       </div>
 
-      {/* Floating AI Trigger & Assistant Drawer */}
+      {/* Floating Concierge Drawer */}
       <AssistantDrawer
         eventId={eventId}
         isOpen={isAssistantOpen}
         onClose={() => setIsAssistantOpen(false)}
         onDataChanged={fetchDashboard}
-        currency={budget.currency}
+        currency={data?.budget?.currency}
       />
     </div>
   );
