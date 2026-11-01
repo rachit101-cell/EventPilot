@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  eventpilot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_PATH=/app/data/eventpilot.db
+      - JWT_SECRET=change-this-in-production-to-a-secure-random-key
+      # Optional AI Keys (app works out-of-the-box with heuristic engine if omitted)
+      # - GEMINI_API_KEY=your-gemini-key
+      # - OPENAI_API_KEY=your-openai-key
+    volumes:
+      - eventpilot_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  eventpilot_data:
