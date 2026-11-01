@@ -9,6 +9,9 @@
     "lint": "next lint",
     "test": "vitest run"
   },
+  "engines": {
+    "node": ">=22.x"
+  },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "canvas-confetti": "^1.9.4",

@@ -12,8 +12,12 @@ export function getDb(): any {
     return globalForDb.dbInstance;
   }
 
-  // Determine database file path
-  const dbPath = process.env.DATABASE_PATH || path.join(process.cwd(), "data", "eventpilot.db");
+  // Determine database file path (auto-detects Vercel /tmp writable filesystem)
+  const isVercel = process.env.VERCEL === "1" || !!process.env.VERCEL;
+  const defaultDbPath = isVercel
+    ? path.join("/tmp", "eventpilot.db")
+    : path.join(process.cwd(), "data", "eventpilot.db");
+  const dbPath = process.env.DATABASE_PATH || defaultDbPath;
   const dbDir = path.dirname(dbPath);
 
   try {
